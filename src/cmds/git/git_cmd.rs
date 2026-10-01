@@ -2607,10 +2607,20 @@ fn run_commit(args: &[String], verbose: u8, global_args: &[String]) -> Result<i3
         .context("Failed to run git commit")?;
     let raw_output = format!("{}\n{}", stdout, stderr);
 
-    match classify_commit_outcome(exit_code == 0, &stdout, exit_code) {
+    match classify_commit_outcome(exit_code == 0, &stdout, &stderr, exit_code) {
         CommitOutcome::Ok(compact) => {
             println!("{}", compact);
             timer.track(&original_cmd, "rtk git commit", &raw_output, &compact);
+            Ok(0)
+        }
+        CommitOutcome::OkWithOutput => {
+            if !stdout.is_empty() {
+                print!("{}", stdout);
+            }
+            if !stderr.is_empty() {
+                eprint!("{}", stderr);
+            }
+            timer.track(&original_cmd, "rtk git commit", &raw_output, &raw_output);
             Ok(0)
         }
         CommitOutcome::Failed(code) => {
@@ -2630,12 +2640,28 @@ fn run_commit(args: &[String], verbose: u8, global_args: &[String]) -> Result<i3
 /// rather than being reported as "ok" (#2494).
 enum CommitOutcome {
     Ok(String),
+    OkWithOutput,
     Failed(i32),
 }
 
 /// Classify a `git commit` result.
-fn classify_commit_outcome(success: bool, stdout: &str, exit_code: i32) -> CommitOutcome {
+fn classify_commit_outcome(
+    success: bool,
+    stdout: &str,
+    stderr: &str,
+    exit_code: i32,
+) -> CommitOutcome {
     if success {
+        // Hook output can appear on either stream. Preserve the full output whenever
+        // it is not the ordinary one-line commit summary or when stderr is non-empty.
+        let is_plain_summary = stderr.is_empty()
+            && stdout.lines().count() == 1
+            && stdout.starts_with('[')
+            && parse_commit_output(stdout) != "ok";
+        if (!stdout.is_empty() && !is_plain_summary) || !stderr.is_empty() {
+            return CommitOutcome::OkWithOutput;
+        }
+
         // Extract commit hash from output
         let compact = stdout
             .lines()
@@ -6384,18 +6410,46 @@ no changes added to commit (use "git add" and/or "git commit -a")
 
     #[test]
     fn test_classify_commit_success_extracts_hash() {
-        match classify_commit_outcome(true, "[main abc1234def] add feature", 0) {
+        match classify_commit_outcome(true, "[main abc1234def] add feature\n", "", 0) {
             CommitOutcome::Ok(s) => assert_eq!(s, "ok abc1234"),
+            CommitOutcome::OkWithOutput => panic!("plain commit summary must be compacted"),
             CommitOutcome::Failed(_) => panic!("successful commit must be Ok"),
         }
     }
 
     #[test]
     fn test_classify_commit_success_empty_stdout() {
-        match classify_commit_outcome(true, "", 0) {
+        match classify_commit_outcome(true, "", "", 0) {
             CommitOutcome::Ok(s) => assert_eq!(s, "ok"),
+            CommitOutcome::OkWithOutput => panic!("empty success output must be compacted"),
             CommitOutcome::Failed(_) => panic!("successful commit must be Ok"),
         }
+    }
+
+    #[test]
+    fn test_classify_commit_success_preserves_hook_stdout() {
+        assert!(matches!(
+            classify_commit_outcome(
+                true,
+                "pre-commit warning: formatting issues found\n[main abc1234def] add feature\n",
+                "",
+                0,
+            ),
+            CommitOutcome::OkWithOutput
+        ));
+    }
+
+    #[test]
+    fn test_classify_commit_success_preserves_hook_stderr() {
+        assert!(matches!(
+            classify_commit_outcome(
+                true,
+                "[main abc1234def] add feature\n",
+                "pre-commit warning: formatting issues found\n",
+                0,
+            ),
+            CommitOutcome::OkWithOutput
+        ));
     }
 
     #[test]
@@ -6403,18 +6457,21 @@ no changes added to commit (use "git add" and/or "git commit -a")
         match classify_commit_outcome(
             false,
             "On branch main\nnothing to commit, working tree clean",
+            "",
             1,
         ) {
             CommitOutcome::Failed(code) => assert_eq!(code, 1),
             CommitOutcome::Ok(s) => panic!("nothing-to-commit must not be ok: {}", s),
+            CommitOutcome::OkWithOutput => panic!("failed commit must remain a failure"),
         }
     }
 
     #[test]
     fn test_classify_commit_hook_abort_propagates_exit_code() {
-        match classify_commit_outcome(false, "pre-commit hook failed", 2) {
+        match classify_commit_outcome(false, "pre-commit hook failed", "", 2) {
             CommitOutcome::Failed(code) => assert_eq!(code, 2),
             CommitOutcome::Ok(_) => panic!("hook abort must be a failure"),
+            CommitOutcome::OkWithOutput => panic!("hook abort must be a failure"),
         }
     }
 
