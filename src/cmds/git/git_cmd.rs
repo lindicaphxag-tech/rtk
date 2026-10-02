@@ -2652,17 +2652,16 @@ fn classify_commit_outcome(
     exit_code: i32,
 ) -> CommitOutcome {
     if success {
-        // Hook output can appear on either stream. Preserve the full output whenever
-        // it is not the ordinary one-line commit summary or when stderr is non-empty.
-        let is_plain_summary = stderr.is_empty()
-            && stdout.lines().count() == 1
-            && stdout.starts_with('[')
-            && parse_commit_output(stdout) != "ok";
-        if (!stdout.is_empty() && !is_plain_summary) || !stderr.is_empty() {
+        // Git routes successful commit-hook output to the commit process' stderr,
+        // including hook writes to stdout. Preserve it instead of collapsing the
+        // command to `ok <sha>`. Normal commit statistics remain on stdout.
+        if !stderr.is_empty() {
             return CommitOutcome::OkWithOutput;
         }
 
-        // Extract commit hash from output
+        // Extract the commit hash from the first stdout line. A normal successful
+        // commit can have additional Git-owned statistics (files changed, modes,
+        // renames, etc.), which should remain compacted as before.
         let compact = stdout
             .lines()
             .next()
@@ -6427,16 +6426,17 @@ no changes added to commit (use "git add" and/or "git commit -a")
     }
 
     #[test]
-    fn test_classify_commit_success_preserves_hook_stdout() {
-        assert!(matches!(
-            classify_commit_outcome(
-                true,
-                "pre-commit warning: formatting issues found\n[main abc1234def] add feature\n",
-                "",
-                0,
-            ),
-            CommitOutcome::OkWithOutput
-        ));
+    fn test_classify_commit_success_multiline_git_output_stays_compact() {
+        match classify_commit_outcome(
+            true,
+            "[main abc1234def] add feature\n 1 file changed, 1 insertion(+)\n create mode 100644 file.txt\n",
+            "",
+            0,
+        ) {
+            CommitOutcome::Ok(s) => assert_eq!(s, "ok abc1234"),
+            CommitOutcome::OkWithOutput => panic!("ordinary git statistics must remain compacted"),
+            CommitOutcome::Failed(_) => panic!("successful commit must be Ok"),
+        }
     }
 
     #[test]
