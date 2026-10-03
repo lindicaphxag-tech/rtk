@@ -40,7 +40,7 @@ Token-savings tests run inline as part of `cargo test --all`. The `mvn` fixtures
 
 ### Integrity-check whitelist
 
-`Commands::Mvn` and `Commands::Mvnd` are intentionally omitted from `is_operational_command` in `src/main.rs`, matching the gradle precedent (`Commands::Gradlew` also omitted). The whitelist guards SHA-256 hook-integrity verification; filter modules invoked through an already-verified hook do not need a second check on their own dispatch path. Per the comment above the function, the whitelist is opt-in by design and a forgotten command fails open rather than creating false confidence about what's protected.
+`Commands::Gradlew`, `Commands::Mvn`, and `Commands::Mvnd` are included in `is_operational_command` because `rtk rewrite` can emit each of them. This ensures a tampered installed hook is rejected before dispatching commands reached through the hook rewrite path. The whitelist remains opt-in by design for commands that are not hook rewrite targets.
 
 ## Gradle (`gradlew_cmd.rs`)
 
