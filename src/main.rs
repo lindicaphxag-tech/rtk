@@ -3479,6 +3479,13 @@ fn is_operational_command(cmd: &Commands) -> bool {
             | Commands::Bun { .. }
             | Commands::Bunx { .. }
             | Commands::Deno { .. }
+            | Commands::Aws { .. }
+            | Commands::Psql { .. }
+            | Commands::Wc { .. }
+            | Commands::Mypy { .. }
+            | Commands::Gradlew { .. }
+            | Commands::Mvn { .. }
+            | Commands::Mvnd { .. }
     )
 }
 
@@ -3495,6 +3502,30 @@ mod tests {
             let cli = Cli::try_parse_from(["rtk", framework, "src/a.test.js"])
                 .expect("rtk <framework> <path> parses");
             assert!(is_operational_command(&cli.command), "{framework}");
+        }
+    }
+
+
+    #[test]
+    fn test_rewrite_targets_get_the_hook_integrity_check() {
+        let cases: &[&[&str]] = &[
+            &["rtk", "aws", "s3", "ls"],
+            &["rtk", "psql", "-c", "select 1"],
+            &["rtk", "wc", "-l", "src/main.rs"],
+            &["rtk", "mypy", "src"],
+            &["rtk", "gradlew", "build"],
+            &["rtk", "mvn", "test"],
+            &["rtk", "mvnd", "test"],
+        ];
+
+        for args in cases {
+            let cli = Cli::try_parse_from(*args)
+                .unwrap_or_else(|err| panic!("{} must parse: {err}", args.join(" ")));
+            assert!(
+                is_operational_command(&cli.command),
+                "{} must be protected by the hook integrity check",
+                args.join(" ")
+            );
         }
     }
 
