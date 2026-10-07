@@ -1286,9 +1286,12 @@ mod tests {
                 filter.on_exit(
                     0,
                     concat!(
-                        "(standard input)\0", "1:first\n",
-                        "(standard input)\0", "2:second\n",
-                        "(standard input)\0", "3:third\n"
+                        "(standard input)\0",
+                        "1:first\n",
+                        "(standard input)\0",
+                        "2:second\n",
+                        "(standard input)\0",
+                        "3:third\n"
                     )
                 ),
                 Some("[rtk] capped: showing 1 of 3\n".to_string())
