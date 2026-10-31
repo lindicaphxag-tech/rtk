@@ -526,8 +526,7 @@ impl StreamFilter for SearchStreamFilter {
 
         let mut summary = format!(
             "[rtk] capped: showing {} of {}",
-            self.shown,
-            self.total_matches
+            self.shown, self.total_matches
         );
         if !capture_complete {
             summary.push_str(" [capture truncated; full recall unavailable]");
@@ -1351,7 +1350,10 @@ mod tests {
                             .to_string()
                     )
                 );
-                assert!(!recall_db.exists(), "must not archive a partial search as complete");
+                assert!(
+                    !recall_db.exists(),
+                    "must not archive a partial search as complete"
+                );
             },
         );
     }
