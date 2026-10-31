@@ -473,6 +473,7 @@ struct SearchStreamFilter {
     max_results: usize,
     command_slug: String,
     shown: usize,
+    total_matches: usize,
     cap_reported: bool,
 }
 
@@ -485,6 +486,9 @@ impl StreamFilter for SearchStreamFilter {
             return Some(format!("{line}\n"));
         };
 
+        // Count every match in the live stream, not in the bounded raw capture
+        // (run_streaming retains at most RAW_CAP bytes for on_exit).
+        self.total_matches = self.total_matches.saturating_add(1);
         if self.shown >= self.max_results {
             self.cap_reported = true;
             return None;
@@ -507,18 +511,27 @@ impl StreamFilter for SearchStreamFilter {
             .lines()
             .filter_map(|line| format_match_line(line, self.show_file, self.show_line))
             .collect::<String>();
-        let total = matches.lines().count();
-        let hint = crate::core::tee::force_tee_tail_hint(
-            &matches,
-            &self.command_slug,
-            self.max_results + 1,
-        );
+        // RAW_CAP can truncate the captured output while feed_line continues
+        // receiving matches. Never offer a recall link to an incomplete store.
+        let capture_complete = matches.lines().count() == self.total_matches;
+        let hint = if capture_complete {
+            crate::core::tee::force_tee_tail_hint(
+                &matches,
+                &self.command_slug,
+                self.max_results + 1,
+            )
+        } else {
+            None
+        };
 
         let mut summary = format!(
             "[rtk] capped: showing {} of {}",
-            self.max_results.min(total),
-            total
+            self.shown,
+            self.total_matches
         );
+        if !capture_complete {
+            summary.push_str(" [capture truncated; full recall unavailable]");
+        }
         if let Some(hint) = hint {
             summary.push(' ');
             summary.push_str(&hint);
@@ -554,6 +567,7 @@ fn run_streaming_search(
         max_results,
         command_slug: real_cmd.to_string(),
         shown: 0,
+        total_matches: 0,
         cap_reported: false,
     };
     let mut cmd = engine_command(engine, extra_args, patterns, paths, true);
@@ -1243,6 +1257,7 @@ mod tests {
             max_results: 10,
             command_slug: "grep match".to_string(),
             shown: 0,
+            total_matches: 0,
             cap_reported: false,
         };
 
@@ -1265,6 +1280,7 @@ mod tests {
             max_results: 1,
             command_slug: "grep match".to_string(),
             shown: 0,
+            total_matches: 0,
             cap_reported: false,
         };
 
@@ -1300,6 +1316,47 @@ mod tests {
     }
 
     #[test]
+    fn streaming_search_reports_full_match_count_when_raw_capture_is_truncated() {
+        // run_streaming continues feeding lines after its 10 MiB raw capture
+        // stops retaining bytes. A partial recall link would be misleading.
+        let _guard = crate::core::utils::TEST_ENV_LOCK.lock().unwrap();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let recall_db = temp_dir.path().join("recall.db");
+        let recall_db_env = recall_db.to_str().unwrap();
+
+        crate::core::user_env::with_vars(
+            &[
+                ("RTK_RECALL_DB", Some(recall_db_env)),
+                ("RTK_RECALL", None),
+                ("RTK_TEE", None),
+            ],
+            || {
+                let mut filter = SearchStreamFilter {
+                    show_file: false,
+                    show_line: true,
+                    max_results: 1,
+                    command_slug: "grep match".to_string(),
+                    shown: 0,
+                    total_matches: 0,
+                    cap_reported: false,
+                };
+                for (index, value) in ["first", "second", "third"].iter().enumerate() {
+                    let line = format!("(standard input)\0{}:{value}", index + 1);
+                    let _ = filter.feed_line(&line);
+                }
+                assert_eq!(
+                    filter.on_exit(0, concat!("(standard input)\0", "1:first\n")),
+                    Some(
+                        "[rtk] capped: showing 1 of 3 [capture truncated; full recall unavailable]\n"
+                            .to_string()
+                    )
+                );
+                assert!(!recall_db.exists(), "must not archive a partial search as complete");
+            },
+        );
+    }
+
+    #[test]
     fn streaming_search_archives_hidden_matches_for_recall() {
         let _guard = crate::core::utils::TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = tempfile::tempdir().unwrap();
@@ -1319,6 +1376,7 @@ mod tests {
                     max_results: 1,
                     command_slug: "grep match".to_string(),
                     shown: 0,
+                    total_matches: 0,
                     cap_reported: false,
                 };
                 assert_eq!(
@@ -1327,6 +1385,10 @@ mod tests {
                 );
                 assert_eq!(
                     filter.feed_line(concat!("(standard input)\0", "2:second")),
+                    None
+                );
+                assert_eq!(
+                    filter.feed_line(concat!("(standard input)\0", "3:third")),
                     None
                 );
 
