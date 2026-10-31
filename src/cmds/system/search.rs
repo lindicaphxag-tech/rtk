@@ -1272,7 +1272,6 @@ mod tests {
 
     #[test]
     fn streaming_search_reports_recoverable_cap_summary() {
-        let _guard = crate::core::utils::TEST_ENV_LOCK.lock().unwrap();
         let mut filter = SearchStreamFilter {
             show_file: false,
             show_line: true,
@@ -1318,7 +1317,6 @@ mod tests {
     fn streaming_search_reports_full_match_count_when_raw_capture_is_truncated() {
         // run_streaming continues feeding lines after its 10 MiB raw capture
         // stops retaining bytes. A partial recall link would be misleading.
-        let _guard = crate::core::utils::TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = tempfile::tempdir().unwrap();
         let recall_db = temp_dir.path().join("recall.db");
         let recall_db_env = recall_db.to_str().unwrap();
@@ -1360,7 +1358,6 @@ mod tests {
 
     #[test]
     fn streaming_search_archives_hidden_matches_for_recall() {
-        let _guard = crate::core::utils::TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = tempfile::tempdir().unwrap();
         let recall_db = temp_dir.path().join("recall.db");
         let recall_db_env = recall_db.to_str().unwrap();
