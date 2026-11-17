@@ -7832,7 +7832,7 @@ mod tests {
     fn test_process_wrapper_keeps_pipeline_context() {
         assert_eq!(
             rewrite_command_no_prefixes("timeout 300 git log | head -5", &[]),
-            Some("timeout 300 rtk git log | head -5".into())
+            None
         );
         assert_eq!(
             rewrite_command_no_prefixes("cargo test | timeout 5 grep error", &[]),
@@ -7988,7 +7988,7 @@ mod tests {
     fn test_rewrite_pipe_then_and() {
         assert_eq!(
             rewrite_command_no_prefixes("git log | head -5 && git stash", &[]),
-            Some("rtk git log | head -5 && rtk git stash".into())
+            Some("git log | head -5 && rtk git stash".into())
         );
     }
 
@@ -7996,7 +7996,7 @@ mod tests {
     fn test_rewrite_pipe_then_semicolon() {
         assert_eq!(
             rewrite_command_no_prefixes("cargo test | head; git status", &[]),
-            Some("rtk cargo test | head; rtk git status".into())
+            Some("cargo test | head; rtk git status".into())
         );
     }
 
@@ -8031,7 +8031,7 @@ mod tests {
     fn test_rewrite_multi_pipe_then_and() {
         assert_eq!(
             rewrite_command_no_prefixes("git log | head | tail && git status", &[]),
-            Some("rtk git log | head | tail && rtk git status".into())
+            Some("git log | head | tail && rtk git status".into())
         );
     }
 
