@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 
 use super::lexer::{
     ParsedToken, PipeKind, QuoteScan, TokenKind, ansi_c_quote_defeats_lexer, coalesce_words,
-    contains_unattestable_construct_in, is_crlf_at, redirect_has_file_target, resolve_word_text,
+    contains_unattestable_construct_in, is_crlf_at, resolve_word_text,
     shell_split, split_on_operators, tokenize, tokenize_with_newlines,
 };
 use super::rules::{IGNORED_EXACT, IGNORED_PREFIXES, RULES, RtkRule};
@@ -1159,7 +1159,11 @@ fn analyze_pipeline(
     PipelineAnalysis {
         end_offset,
         next_clause_offset,
-        final_stage_start: if has_supported_structure { final_stage_start } else { None },
+        final_stage_start: if has_supported_structure {
+            final_stage_start
+        } else {
+            None
+        },
     }
 }
 
