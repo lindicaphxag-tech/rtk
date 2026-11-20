@@ -23,7 +23,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Rust source format
         run: cargo fmt --all -- --check
+      - name: Assert library actually discovers the target tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked --lib streaming_search_ -- --list | tee /tmp/rtk-4107-tests.txt
+          n=$(grep -cE 'streaming_search_.*: test' /tmp/rtk-4107-tests.txt || true)
+          echo "Discovered $n streaming search regression tests"
+          test "$n" -ge 4
       - name: Execute actual streaming grep cap recovery regressions
-        run: cargo test --locked --bin rtk streaming_search_ -- --nocapture
+        run: cargo test --locked --lib streaming_search_ -- --nocapture
       - name: Verify cli integration shell syntax
         run: bash -n hooks/claude/rtk-rewrite.sh
