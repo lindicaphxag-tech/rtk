@@ -1,0 +1,29 @@
+name: Independent native Rust proof for rtk PR 4107
+
+on:
+  push:
+    branches:
+      - verification/rtk-4107-cpu-native-ci-20261121
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-rtk-grep-recall:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Rust source format
+        run: cargo fmt --all -- --check
+      - name: Execute actual streaming grep cap recovery regressions
+        run: cargo test --locked --bin rtk streaming_search_ -- --nocapture
+      - name: Verify cli integration shell syntax
+        run: bash -n hooks/claude/rtk-rewrite.sh
